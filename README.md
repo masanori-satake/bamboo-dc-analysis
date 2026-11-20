@@ -5,7 +5,7 @@
 
 **Atlassian Bamboo Data Center（12.1）** を REST API で読み取り専用に調査・分析する Agent Skill です。GitHub Copilot、Amazon Kiro など、Agent Skills 形式に対応したエージェントから使えます。
 
-Bamboo の Web 画面を行ったり来たりする代わりに、「いま失敗しているプランはどれ？」「このプランの直近90日の成功率と所要時間の傾向を見せて」「このプランの各タスクは何をしていて、何をトリガーに実行されるの？」のようにエージェントへ聞けるようにします。
+Bamboo の Web 画面を何枚も開いて確認していたことを、エージェントへの質問で済ませるためのものです。「いま失敗しているプランはどれ？」「このプランの直近90日の成功率と所要時間の傾向を見せて」「このプランの各タスクは何をしていて、何をトリガーに実行されるの？」と聞けば、API から集めて答えます。
 
 ## できること
 
@@ -41,14 +41,14 @@ git clone https://github.com/masanori-satake/bamboo-dc-analysis.git
 
 配置作業もコピーも不要です。更新は `git pull` だけです。
 
-**別のワークスペースで使う場合** は、チェックアウトから正本フォルダ `.agents/skills/bamboo-dc-analysis/` を取り出してそのワークスペースの `.agents/skills/` に置き、同梱インストーラを1回実行して、Kiro の配置先を正本へのディレクトリリンク（Windows はジャンクション、POSIX はシンボリックリンク）として作ります。実体は1つなので、両環境がずれようがありません。
+**別のワークスペースで使う場合** は、チェックアウトから正本フォルダ `.agents/skills/bamboo-dc-analysis/` を取り出してそのワークスペースの `.agents/skills/` に置き、同梱インストーラを1回実行して、Kiro の配置先を正本へのディレクトリリンク（Windows はジャンクション、POSIX はシンボリックリンク）として作ります。実体は正本だけなので、コピー同士が食い違うことはありません。
 
 ```bash
 python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
 python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --check
 ```
 
-リンクが使えない環境向けに `--mode copy` もあり、`--check` がファイル集合と SHA-256 で同一性を検証します。同梱のフィクスチャテストも任意の配置先を指定して実行でき（`BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`）、「両環境で同じ動き」を前提でなく検証で確かめます。保守ルールの全文は [MAINTAINING.md](MAINTAINING.md) にあります。
+リンクが使えない環境向けに `--mode copy` もあり、`--check` がファイル集合と SHA-256 で同一性を検証します。同梱のフィクスチャテストは配置先を指定して実行できるので（`BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`）、両方で同じ動きになることを実際に確かめられます。保守ルールの全文は [MAINTAINING.md](MAINTAINING.md) にあります。
 
 ## 初期設定
 

@@ -2,7 +2,7 @@
 
 ## リポジトリの構成
 
-このリポジトリは、チェックアウトした途端にスキルが使える構成にします。
+このリポジトリは、チェックアウトして開けばスキルがそのまま使える構成です。
 
 - 正本: `.agents/skills/bamboo-dc-analysis/`（SKILL.md、references/、scripts/、tests/）
 - ミラー: `.kiro/skills/bamboo-dc-analysis/`（正本とバイト同一）
@@ -30,7 +30,7 @@ python tools/sync_mirror.py --check
 python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
 ```
 
-- 既定はリンク方式（Windows はジャンクション、POSIX はシンボリックリンク）で、実体は正本1つです。更新は正本の入れ替えだけで追随します。
+- 既定はリンク方式（Windows はジャンクション、POSIX はシンボリックリンク）で、実体は正本だけです。正本を入れ替えれば、リンク先もそのまま追随します。
 - リンクが使えない環境では `--mode copy` を使い、`install.py --check` で同一性を検証します。
 - 「同じ動き」の担保は、同一性検証に加えてフィクスチャテストです。任意の配置先を指定して実行できます: `BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`（tests は正本フォルダ内にあります）。
 
@@ -41,7 +41,7 @@ python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
 1. **同期ジョブ**: ミラーを再生成し、同一性を検証し、正本とミラーの両方でフィクスチャテストを実行して、ミラーに差分があれば自動コミットします。
 2. **リリースジョブ**: `SKILL.md` の `metadata.version` に対応するリリースがまだ無い場合だけ、タグ `v<版>` を打ち、CHANGELOG の該当節をノートとして GitHub Release を作成します。
 
-そのため、人の手順はこれだけです。
+人がやるのは、これだけです。
 
 1. 正本だけを編集する。
 2. 版を上げるときは `SKILL.md` の `metadata.version` と `CHANGELOG.md` を揃えて更新する。
