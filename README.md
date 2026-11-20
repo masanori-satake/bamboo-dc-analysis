@@ -27,13 +27,33 @@ Instead of clicking through the Bamboo web UI screen by screen, you ask your age
 
 ## Install
 
-Clone this repository as a skill folder into your skills directory, for example:
+Clone this repository once, as the canonical copy, into `.agents/skills/`:
 
 ```bash
 git clone https://github.com/masanori-satake/bamboo-dc-analysis.git .agents/skills/bamboo-dc-analysis
 ```
 
-Place it wherever your agent loads Agent Skills from (`.agents/skills/`, `.github/skills/`, `.kiro/skills/`, and so on).
+Then run the installer once per workspace:
+
+```bash
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
+```
+
+## One canonical copy for both Copilot and Kiro
+
+There is exactly one physical copy of this skill, and both tools work from it:
+
+- **GitHub Copilot** reads `.agents/skills/` directly as a project skill location, so it uses the canonical copy as-is. No Copilot-specific copy exists.
+- **Kiro** only reads `.kiro/skills/`, so the installer places a **directory link** there (a junction on Windows, a symlink on POSIX) pointing at the canonical copy. A link is not a copy: edit the canonical and Kiro sees the same content immediately, so the two environments cannot drift apart.
+
+Where links are not possible (for example, a tree that must be committed as real files), use `--mode copy` and verify parity instead of assuming it:
+
+```bash
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --mode copy
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --check
+```
+
+`--check` compares every installed location against the canonical by file set and SHA-256 and fails on any difference. The bundled fixture tests can also run against any installed location (`BAMBOO_SKILL_DIR=<path> python tests/test_bamboo.py`), so "same behaviour in both environments" is verified, not hoped for. Updates are just a `git pull` of the canonical clone; with links, Kiro follows automatically. The full maintenance rules live in [MAINTAINING.md](MAINTAINING.md).
 
 ## Setup
 
@@ -123,13 +143,33 @@ Bamboo の Web 画面を行ったり来たりする代わりに、「いま失�
 
 ## 導入
 
-スキルフォルダとして、スキル置き場へ clone します。例:
+正本として、このリポジトリを `.agents/skills/` へ1回だけ clone します。
 
 ```bash
 git clone https://github.com/masanori-satake/bamboo-dc-analysis.git .agents/skills/bamboo-dc-analysis
 ```
 
-配置先は使うエージェントの流儀に合わせてください（`.agents/skills/`、`.github/skills/`、`.kiro/skills/` など）。
+そのうえで、ワークスペースごとにインストーラを1回実行します。
+
+```bash
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
+```
+
+## 正本1つで Copilot と Kiro の両対応
+
+スキルの実体は1つだけで、両ツールがそこから動きます。
+
+- **GitHub Copilot** は `.agents/skills/` をプロジェクトスキルの配置先として直接読むため、正本をそのまま使います。Copilot 向けのコピーは存在しません。
+- **Kiro** は `.kiro/skills/` しか読まないため、そこにはコピーではなく、正本を指す **ディレクトリリンク**（Windows はジャンクション、POSIX はシンボリックリンク）を置きます。リンクはコピーではないので、正本を直せば Kiro 側も即座に同じ内容になり、両環境がずれようがありません。
+
+リンクが使えない環境（ファイルそのものをコミットする必要があるツリー等）では `--mode copy` でコピー方式にし、同一性は検証で担保します。
+
+```bash
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --mode copy
+python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --check
+```
+
+`--check` は配置先と正本をファイル集合と SHA-256 で比較し、差分があれば失敗します。同梱のフィクスチャテストも任意の配置先を指定して実行でき（`BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`）、「両環境で同じ動き」を前提でなく検証で確かめます。更新は正本の clone を `git pull` するだけで、リンク方式なら Kiro 側は自動で追随します。保守ルールの全文は [MAINTAINING.md](MAINTAINING.md) にあります。
 
 ## 初期設定
 

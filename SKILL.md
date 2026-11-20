@@ -1,6 +1,8 @@
 ---
 name: bamboo-dc-analysis
 description: Bamboo Data Center（12.1）の REST API を読み取り専用で使い、プロジェクト／プランの棚卸し、最新結果の横断確認、失敗傾向や所要時間の履歴分析、プラン内のタスク構成とトリガーの調査を行うときに使う。Web 画面を行ったり来たりせずに状況を把握したいとき、Bamboo から GitHub Actions / Bitbucket Pipelines への移行調査の材料を集めるときに使う。
+metadata:
+  version: "1.1.0"
 ---
 
 # Bamboo Data Center 調査・分析
