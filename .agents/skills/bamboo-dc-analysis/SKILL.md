@@ -2,7 +2,7 @@
 name: bamboo-dc-analysis
 description: Bamboo Data Center（12.1）の REST API を読み取り専用で使い、プロジェクト／プランの棚卸し、最新結果の横断確認、失敗傾向や所要時間の履歴分析、プラン内のタスク構成とトリガーの調査を行うときに使う。Web 画面を行ったり来たりせずに状況を把握したいとき、Bamboo から GitHub Actions / Bitbucket Pipelines への移行調査の材料を集めるときに使う。
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # Bamboo Data Center 調査・分析
@@ -12,7 +12,7 @@ Bamboo Data Center 12.1 に対して REST API（GET のみ）で調査と分析�
 ## 安全と前提
 
 - 書き込みは一切しない。使うのは HTTP GET のみ。ビルドやデプロイの実行、プランの変更・削除はこのスキルの対象外。
-- 接続情報は環境変数からのみ読む。`BAMBOO_BASE_URL`（Bamboo のルート URL。コンテキストパスを含む、末尾に `/rest` は付けない）と `BAMBOO_PAT`（読み取り専用の Personal Access Token）。
+- 接続情報は環境変数からのみ読む。`BAMBOO_BASE_URL`（Bamboo のルート URL。コンテキストパスを含む、末尾に `/rest` は付けない。末尾のスラッシュはあってもなくてもよい）と `BAMBOO_PAT`（読み取り専用の Personal Access Token）。
 - PAT の値、ベース URL、変数の秘密の値を、チャット・ファイル・コミット・チケットに書かない。変数については「名前とパスワードかどうか」だけを扱い、値は取得しても表示しない。
 - 見える範囲は認証ユーザーの READ 権限の範囲だけである。一覧に出ないことは「存在しない」ことと区別できない。報告ではこの前提を落とさない。
 - GET でも WRITE スコープ扱いのエンドポイントがある（権限まわり、依存検索、Docker 構成、デプロイプロジェクトの Specs 等）。403 は「権限で見えない」として記録し、推測で補わない。
