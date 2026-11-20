@@ -70,6 +70,8 @@ python scripts/bamboo.py check
 
 This reports the instance version and who you are authenticated as. After that, just ask your agent.
 
+For detailed, ready-to-paste prompts per use case — morning snapshots, failure triage, slow-build investigation, migration dossiers, weekly reports — see the [Use cases and prompt cookbook](docs/use-cases.md).
+
 ## Helper commands
 
 Run from the skill folder (`.agents/skills/bamboo-dc-analysis/`):
@@ -180,6 +182,8 @@ python scripts/bamboo.py check
 ```
 
 接続先の版と、誰として認証されたかが返れば準備完了です。あとはエージェントに頼むだけです。
+
+ユースケースごとの詳細なプロンプト（朝の状況確認、失敗の切り分け、ビルド遅延の調査、移行ドシエ、週次レポートなど、そのまま貼って使える形）は [ユースケース別プロンプト集](docs/use-cases.md) にあります。
 
 ## 限界
 
