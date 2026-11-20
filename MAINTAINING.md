@@ -34,14 +34,21 @@ python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
 - リンクが使えない環境では `--mode copy` を使い、`install.py --check` で同一性を検証します。
 - 「同じ動き」の担保は、同一性検証に加えてフィクスチャテストです。任意の配置先を指定して実行できます: `BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`（tests は正本フォルダ内にあります）。
 
-## リリース手順
+## リリース手順（GitHub Actions で自動化）
+
+`.github/workflows/sync-and-release.yml` が、正本への push を契機に次を自動実行します。
+
+1. **同期ジョブ**: ミラーを再生成し、同一性を検証し、正本とミラーの両方でフィクスチャテストを実行して、ミラーに差分があれば自動コミットします。
+2. **リリースジョブ**: `SKILL.md` の `metadata.version` に対応するリリースがまだ無い場合だけ、タグ `v<版>` を打ち、CHANGELOG の該当節をノートとして GitHub Release を作成します。
+
+そのため、人の手順はこれだけです。
 
 1. 正本だけを編集する。
-2. `python tools/sync_mirror.py` でミラーを再生成し、`--check` で同一性を確認する。
-3. 正本とミラーの両方でフィクスチャテストを実行する（`BAMBOO_SKILL_DIR` にそれぞれのパスを指定）。
-4. `SKILL.md` の `metadata.version` を上げ、`CHANGELOG.md` に英語→日本語で記録する。版を上げたら手順 2 をやり直す（版マーカーも同期対象のため）。
-5. コミットして GitHub に push する。
-6. 利用側は、このリポジトリを pull するだけです。チェックアウト構成のため、追加の配置作業はありません。
+2. 版を上げるときは `SKILL.md` の `metadata.version` と `CHANGELOG.md` を揃えて更新する。
+3. コミットして GitHub に push する（ミラーの再生成はワークフローがやるので、ローカルで `sync_mirror.py` を回し忘れてもリリース前に揃います）。
+4. 利用側は、このリポジトリを pull するだけです。チェックアウト構成のため、追加の配置作業はありません。
+
+ワークフローを手動実行（workflow_dispatch）すると、その時点の版でタグとリリースが無ければ作成します。ワークフローが使えない場合の手動手順は、従来どおり `tools/sync_mirror.py` の再生成と `--check`、両配置でのテスト、版マーカーと CHANGELOG の更新、タグとリリースの手動作成です。
 
 ## やらないこと
 
