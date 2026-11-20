@@ -1,6 +1,6 @@
 # Bamboo DC Analysis
 
-[![Latest release](https://img.shields.io/github/v/release/masanori-satake/bamboo-dc-analysis)](https://github.com/masanori-satake/bamboo-dc-analysis/releases)
+[![Latest release](https://img.shields.io/github/v/release/masanori-satake/bamboo-dc-analysis?style=flat)](https://github.com/masanori-satake/bamboo-dc-analysis/releases)
 [![Sync mirror and release](https://github.com/masanori-satake/bamboo-dc-analysis/actions/workflows/sync-and-release.yml/badge.svg)](https://github.com/masanori-satake/bamboo-dc-analysis/actions/workflows/sync-and-release.yml)
 
 An Agent Skill that investigates and analyzes **Atlassian Bamboo Data Center (12.1)** through its REST API — read-only — from GitHub Copilot, Amazon Kiro, or any agent that supports the Agent Skills format.
