@@ -59,7 +59,7 @@
 
 | 目的 | エンドポイント | 備考 |
 |---|---|---|
-| プランの Specs エクスポート | `GET /api/latest/plan/{projectKey}-{buildKey}/specs?format=YAML` | READ スコープ。プラン構成の閲覧権限がないと 403 |
+| プランの Specs エクスポート | `GET /api/latest/plan/{projectKey}-{buildKey}/specs?format=YAML` | READ スコープ。応答は JSON で YAML は `spec.code` に入る（`Accept: text/plain` は 406）。プラン構成の閲覧権限がないと 403 |
 | プロジェクトの Specs エクスポート | `GET /api/latest/project/{projectKey}/specs?format=YAML` | READ スコープ |
 | デプロイプロジェクトの Specs | `GET /api/latest/deploy/project/{id}/specs` | WRITE スコープ扱い。取れない場合は環境定義の GET で代替 |
 | ジョブの Docker 構成 | `GET /api/latest/job/{jobKey}/docker` | WRITE スコープ扱い |

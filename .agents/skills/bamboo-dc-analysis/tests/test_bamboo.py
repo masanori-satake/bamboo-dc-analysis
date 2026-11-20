@@ -129,12 +129,25 @@ class Handler(BaseHTTPRequestHandler):
                 "results": {"result": page},
             })
         elif path == "/rest/api/latest/plan/PROJ-PLAN/specs":
-            body = SPECS_YAML.encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            # Real Bamboo behaviour: the specs endpoint produces a JSON
+            # envelope (YAML at spec.code) and rejects Accept: text/plain
+            # with 406 and an empty body.
+            accept = self.headers.get("Accept", "")
+            if "application/json" not in accept and "*/*" not in accept:
+                self.send_response(406)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_json({"spec": {"code": SPECS_YAML}})
+        elif path == "/rest/api/latest/plan/PROJ-STRICT/specs":
+            # Stricter variant: only */* is accepted, to exercise the
+            # helper's 406 fallback retry.
+            if self.headers.get("Accept", "") != "*/*":
+                self.send_response(406)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_json({"spec": {"code": SPECS_YAML}})
         elif path == "/rest/api/latest/plan/PROJ-PLAN":
             self.send_json({
                 "key": "PROJ-PLAN", "name": "Sample Plan", "enabled": True,
@@ -205,6 +218,21 @@ def main():
     assert tasks == ["checkout", "script", "maven3", "junit-parser"], tasks
     print("specs-outline OK", tasks)
 
+    # specs: the YAML must come out of the JSON envelope (spec.code),
+    # not be the raw response body
+    p = run_helper(env, "specs", "PROJ-PLAN")
+    assert p.returncode == 0, p.stderr
+    assert p.stdout == SPECS_YAML, p.stdout[:200]
+    print("specs envelope OK")
+
+    # specs fallback: first attempt (application/json) gets 406,
+    # the */* retry must succeed
+    p = run_helper(env, "specs-outline", "PROJ-STRICT")
+    assert p.returncode == 0, p.stderr
+    outline = json.loads(p.stdout)
+    assert outline["jobTasks"]["Build Job"] == ["checkout", "script", "maven3", "junit-parser"], outline
+    print("specs 406 fallback OK")
+
     # variables: names only
     p = run_helper(env, "variables", "PROJ-PLAN")
     assert p.returncode == 0, p.stderr
@@ -222,6 +250,8 @@ def main():
                  "variables-raw.json", "dependencies.json", "deploy-for-plan.json",
                  "history-stats.json", "dossier.md"):
         assert os.path.exists(os.path.join(outdir, name)), name
+    with open(os.path.join(outdir, "specs.yaml")) as f:
+        assert f.read() == SPECS_YAML
     with open(os.path.join(outdir, "dossier.md")) as f:
         md = f.read()
     assert TOKEN not in md

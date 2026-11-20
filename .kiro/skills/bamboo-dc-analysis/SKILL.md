@@ -2,7 +2,7 @@
 name: bamboo-dc-analysis
 description: Bamboo Data Center（12.1）の REST API を読み取り専用で使い、プロジェクト／プランの棚卸し、最新結果の横断確認、失敗傾向や所要時間の履歴分析、プラン内のタスク構成とトリガーの調査を行うときに使う。Web 画面を行ったり来たりせずに状況を把握したいとき、Bamboo から GitHub Actions / Bitbucket Pipelines への移行調査の材料を集めるときに使う。
 metadata:
-  version: "1.2.1"
+  version: "1.2.2"
 ---
 
 # Bamboo Data Center 調査・分析
@@ -42,6 +42,7 @@ python scripts/bamboo.py check
 - `specs PLANKEY --out plan.yaml` で YAML を取得し、`specs-outline PLANKEY` のアウトライン（トリガー、通知、ジョブごとのタスク種別の出現順）を読みの入口にする。条件・引数・スクリプト本文は YAML 本体で確認する。
 - 読み方は `references/specs-guide.md` に従う。UI で作られたプランでも生成 Specs として出てくるが、手書き Specs と生成 Specs では読みやすさが違う点を報告に注記する。
 - Specs が 403 の場合は「プラン構成の閲覧権限がないため取得不可」と記録し、通常フィールド（ステージ／ジョブ名）で代替できる範囲だけを報告する。
+- Specs の応答は JSON 形式で、YAML 本体は `spec.code` に入っている。`Accept: text/plain` では 406 になるため、Specs の取得は必ずヘルパー経由で行い、API を直接叩かない。取得に失敗した場合は、ヘルパーのエラー文（HTTP ステータスと応答本文の抜粋を含む）を要約せず、そのまま報告に含める。
 
 ## 分析と報告の約束
 

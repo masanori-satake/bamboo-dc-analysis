@@ -10,6 +10,7 @@ python scripts/bamboo.py specs-outline PROJ-PLAN
 ```
 
 - エンドポイントは `GET /rest/api/latest/plan/{projectKey}-{buildKey}/specs?format=YAML`（プロジェクト単位は `/project/{projectKey}/specs`）。
+- **応答は YAML そのものではなく JSON で、YAML 本体は `spec.code` の文字列に入っている。** `Accept: application/json` で取得すること。`Accept: text/plain` は 406 Not Acceptable になる（実機 12.1 で確認済み。Atlassian 公式の取得例も application/json ＋ `.spec.code` の取り出しである）。ヘルパーは JSON で取得して `spec.code` を取り出し、406 の場合は `Accept: */*` で1回だけ再試行する。API を直接叩く場合も、この形式に合わせること。
 - 12.1 では READ スコープだが、プラン構成の閲覧権限がないと 403 になる。その場合は「取得不可」と記録し、通常フィールドで代替する。
 - UI で作られたプランでも生成 Specs として出てくる。生成 Specs は冗長で読みにくいことがある。手書き Specs（リポジトリ管理、RSS）かどうかは読みやすさと `repositories` の記述から推測できるが、断定はしない。
 

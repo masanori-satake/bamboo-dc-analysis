@@ -71,10 +71,11 @@ def api_get(base, pat, path, params=None, accept="application/json"):
             ctype = resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
         try:
-            excerpt = e.read().decode("utf-8", "replace")[:300]
+            excerpt = e.read().decode("utf-8", "replace")[:500]
         except Exception:
             excerpt = ""
-        raise ApiError(e.code, f"HTTP {e.code} for {path}: {redact(excerpt, pat)}")
+        detail = redact(excerpt, pat) if excerpt else "(response body was empty)"
+        raise ApiError(e.code, f"HTTP {e.code} for {path}: {detail}")
     except urllib.error.URLError as e:
         raise ApiError(0, f"Connection failed for {path}: {e.reason}")
     if "json" in ctype:
@@ -379,13 +380,31 @@ def cmd_queue(base, pat, args):
 
 
 def fetch_specs(base, pat, plan_key):
+    """Fetch the plan's Bamboo Specs YAML.
+
+    The specs endpoint answers with a JSON envelope: the YAML is the string
+    at spec.code. It does not produce text/plain, so sending
+    Accept: text/plain is rejected with 406 (confirmed on a real 12.1
+    instance; Atlassian's own examples use Accept: application/json and
+    extract .spec.code). Negotiate JSON first; on 406, retry once with */*.
+    """
     project, build = split_plan_key(plan_key)
-    return api_get(
-        base, pat,
-        f"/api/latest/plan/{project}-{build}/specs",
-        {"format": "YAML"},
-        accept="text/plain",
-    )
+    path = f"/api/latest/plan/{project}-{build}/specs"
+    params = {"format": "YAML"}
+    try:
+        data = api_get(base, pat, path, params, accept="application/json")
+    except ApiError as e:
+        if e.status != 406:
+            raise
+        data = api_get(base, pat, path, params, accept="*/*")
+    if isinstance(data, dict):
+        spec = data.get("spec")
+        code = spec.get("code") if isinstance(spec, dict) else None
+        if isinstance(code, str):
+            return code
+        raise ApiError(0, f"Specs response had no spec.code string; top-level keys: {sorted(data.keys())}")
+    # Some instances may answer with the YAML directly as text.
+    return data
 
 
 def cmd_specs(base, pat, args):
