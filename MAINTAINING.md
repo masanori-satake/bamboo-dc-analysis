@@ -1,49 +1,49 @@
-# Maintaining — 正本1つで Copilot と Kiro の両対応を維持する
+# Maintaining — 正本1つ、チェックアウトで即利用、両対応を維持する
 
-このスキルの保守ルールは1つだけです。**編集するのは正本だけ**。正本はこのリポジトリであり、各ワークスペースでは `.agents/skills/bamboo-dc-analysis/` に置いた clone がそれにあたります。
+## リポジトリの構成
 
-## なぜコピーが要らないか
+このリポジトリは、チェックアウトした途端にスキルが使える構成にします。
 
-- **GitHub Copilot** は `.agents/skills/` をプロジェクトスキルの配置先として直接読みます（他に `.github/skills/`、`.claude/skills/`）。正本をそのまま読むので、Copilot 向けのコピーは存在しません。
-- **Kiro** は `.kiro/skills/` しか読まないため、そこにはコピーではなく **ディレクトリリンク**（Windows はジャンクション、POSIX はシンボリックリンク）を置きます。リンクは実体が1つなので、正本を直せば Kiro 側も即座に同じ内容になり、ずれようがありません。
-- リンクが使えない環境（リンク先の実体ではなくファイルそのものをコミットする必要があるツリー等）では、コピー方式に切り替えます。その代わり、コピーの同一性は感覚でなく検証で担保します（後述）。
+- 正本: `.agents/skills/bamboo-dc-analysis/`（SKILL.md、references/、scripts/、tests/）
+- ミラー: `.kiro/skills/bamboo-dc-analysis/`（正本とバイト同一）
+- リポジトリ直下: README、CHANGELOG、LICENSE、本書、`tools/sync_mirror.py`
 
-## 配置
+Copilot は `.agents/skills/` をそのまま発見し、Kiro は `.kiro/skills/` を発見します。チェックアウトを開けば、どちらのツールでも配置作業なしでスキルが有効になります。
 
-ワークスペースのルートで、正本の clone を置いたあとに1回だけ実行します。
+## 編集のルール
+
+- 編集するのは正本だけです。ミラーを直接編集しません。
+- 正本を編集したら、コミット前に必ず次を実行します。
+
+```bash
+python tools/sync_mirror.py
+python tools/sync_mirror.py --check
+```
+
+`sync_mirror.py` は正本からミラーを再生成し、`--check` はファイル集合と SHA-256 で同一性を検証します（ずれがあれば該当ファイルを示して終了コード 1）。
+
+## 他のワークスペースへ入れるとき
+
+このリポジトリ以外のワークスペースで使う場合は、正本フォルダをそのワークスペースの `.agents/skills/` に置き、正本同梱のインストーラで Kiro 向けの配置を作ります。
 
 ```bash
 python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace .
 ```
 
-- 既定はリンク方式。コピー方式にする場合は `--mode copy`。
-- `.github/skills/` にも置きたい場合は `--with-github`（Copilot には不要です）。
-- 既存の配置が正本と食い違う場合、スクリプトは上書きを拒否します。意図した置き換えのときだけ `--force` を付けます。
-
-## 同一性の検証
-
-```bash
-python .agents/skills/bamboo-dc-analysis/scripts/install.py --workspace . --check
-```
-
-配置先ごとに、正本とのファイル集合と SHA-256 を比較します。リンクは「正本へのリンクであること」自体を合格とし、コピーはバイト同一を合格とします。ずれがあれば該当ファイルを示して終了コード 1 を返します。
-
-「同じ動き」の担保は、この同一性検証に加えてフィクスチャテストです。任意の配置先を指定して同じテストを実行できます。
-
-```bash
-BAMBOO_SKILL_DIR=<配置先のパス> python tests/test_bamboo.py
-```
+- 既定はリンク方式（Windows はジャンクション、POSIX はシンボリックリンク）で、実体は正本1つです。更新は正本の入れ替えだけで追随します。
+- リンクが使えない環境では `--mode copy` を使い、`install.py --check` で同一性を検証します。
+- 「同じ動き」の担保は、同一性検証に加えてフィクスチャテストです。任意の配置先を指定して実行できます: `BAMBOO_SKILL_DIR=<配置先> python tests/test_bamboo.py`（tests は正本フォルダ内にあります）。
 
 ## リリース手順
 
 1. 正本だけを編集する。
-2. `python tests/test_bamboo.py` を正本で実行し、全件合格を確認する。
-3. サンドボックスのワークスペースで `install.py` のリンク方式とコピー方式の両方を試し、`--check` が合格すること、コピー側にわざと差分を作ると `--check` が検出することを確認する。
-4. `SKILL.md` の `metadata.version` を上げ、`CHANGELOG.md` に英語→日本語で記録する。
-5. コミットしてタグ（`vX.Y.Z`）を付け、GitHub に push する。
-6. 利用側の各マシンでは、正本の clone を `git pull` するだけです。リンク方式なら Kiro 側は自動で追随します。コピー方式の配置がある場合は `install.py` を再実行し、`--check` で締めます。
+2. `python tools/sync_mirror.py` でミラーを再生成し、`--check` で同一性を確認する。
+3. 正本とミラーの両方でフィクスチャテストを実行する（`BAMBOO_SKILL_DIR` にそれぞれのパスを指定）。
+4. `SKILL.md` の `metadata.version` を上げ、`CHANGELOG.md` に英語→日本語で記録する。版を上げたら手順 2 をやり直す（版マーカーも同期対象のため）。
+5. コミットして GitHub に push する。
+6. 利用側は、このリポジトリを pull するだけです。チェックアウト構成のため、追加の配置作業はありません。
 
 ## やらないこと
 
-- 配置先（`.kiro/skills/` や `.github/skills/` の中身）を直接編集しない。直したいときは正本を直して再配置する。
+- ミラーや配置先の中身を直接編集しない。直したいときは正本を直して再生成・再配置する。
 - 版を上げる際、SKILL.md のメタデータと CHANGELOG のどちらか片方だけを更新しない。

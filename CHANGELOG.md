@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — 2026-11-20
+
+- Restructured the repository so a plain checkout works immediately: the canonical skill now lives at `.agents/skills/bamboo-dc-analysis/` (Copilot discovers it as-is), with a byte-identical mirror at `.kiro/skills/bamboo-dc-analysis/` (Kiro's discovery location). No install step is needed to use the skill in a checkout of this repository.
+- Added `tools/sync_mirror.py` to regenerate the mirror from the canonical and to verify parity (`--check`, file set + SHA-256). The mirror is never edited by hand.
+
+- リポジトリをチェックアウトした途端に使える構成へ再編。正本は `.agents/skills/bamboo-dc-analysis/`（Copilot がそのまま発見する）に置き、Kiro の発見先である `.kiro/skills/bamboo-dc-analysis/` にはバイト同一のミラーを配置。このリポジトリのチェックアウトでは、配置作業なしでスキルが使える。
+- `tools/sync_mirror.py` を追加。正本からミラーを再生成し、`--check` で同一性（ファイル集合＋SHA-256）を検証する。ミラーは手で編集しない。
+
 ## 1.1.0 — 2026-11-20
 
 - Added `scripts/install.py`: installs the skill from one canonical copy (`.agents/skills/`) into Kiro's location as a directory link (Windows junction / POSIX symlink), with a copy mode fallback and a `--check` parity verification (file set + SHA-256). Copilot reads the canonical `.agents/skills/` directly, so both tools always work from the same content.
