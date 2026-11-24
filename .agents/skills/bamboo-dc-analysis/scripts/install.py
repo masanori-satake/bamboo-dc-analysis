@@ -73,6 +73,10 @@ def link_target(path):
 def make_link(source, dest):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.name == "nt":
+        # cmd /c re-parses its command line, so a quote in a path could
+        # break out of the argument it was meant to stay inside.
+        if '"' in dest or '"' in source:
+            raise RuntimeError("paths containing double quotes are not supported for mklink")
         # Directory junction: no administrator rights needed.
         proc = subprocess.run(
             ["cmd", "/c", "mklink", "/J", dest, source],

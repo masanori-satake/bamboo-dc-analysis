@@ -20,6 +20,36 @@ from datetime import datetime, timedelta, timezone
 
 TIMEOUT = 30
 DEFAULT_PAGE = 100
+# Upper bound on a single response body. Bamboo list/detail responses
+# with expansions stay far below this; the cap only stops a hostile or
+# broken server from making the helper buffer an unbounded payload.
+MAX_BODY_BYTES = 32 * 1024 * 1024
+
+
+class _CredentialSafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirects must not leak the PAT.
+
+    urllib follows redirects with the original headers, Authorization
+    included, wherever the server points. This handler drops the
+    Authorization header when the target is on a different host or
+    downgrades https to http (the token must never travel in
+    cleartext), and refuses to follow non-http(s) targets at all.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is None:
+            return None
+        original = urllib.parse.urlparse(req.full_url)
+        if parsed.netloc != original.netloc or (original.scheme == "https" and parsed.scheme == "http"):
+            new_req.remove_header("Authorization")
+        return new_req
+
+
+_OPENER = urllib.request.build_opener(_CredentialSafeRedirectHandler())
 
 
 class ConfigError(Exception):
@@ -66,20 +96,25 @@ def api_get(base, pat, path, params=None, accept="application/json"):
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            body = resp.read()
+        with _OPENER.open(req, timeout=TIMEOUT) as resp:
+            body = resp.read(MAX_BODY_BYTES + 1)
             ctype = resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:
         try:
-            excerpt = e.read().decode("utf-8", "replace")[:500]
+            excerpt = e.read(8192).decode("utf-8", "replace")[:500]
         except Exception:
             excerpt = ""
         detail = redact(excerpt, pat) if excerpt else "(response body was empty)"
         raise ApiError(e.code, f"HTTP {e.code} for {path}: {detail}")
     except urllib.error.URLError as e:
         raise ApiError(0, f"Connection failed for {path}: {e.reason}")
+    if len(body) > MAX_BODY_BYTES:
+        raise ApiError(0, f"Response for {path} exceeded the {MAX_BODY_BYTES // (1024 * 1024)} MB limit")
     if "json" in ctype:
-        return json.loads(body.decode("utf-8"))
+        try:
+            return json.loads(body.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            raise ApiError(0, f"Response for {path} was not valid JSON")
     return body.decode("utf-8", "replace")
 
 
@@ -295,7 +330,7 @@ def cmd_plans(base, pat, args):
 
 def cmd_plan(base, pat, args):
     data = api_get(base, pat, f"/api/latest/plan/{args.plan_key}",
-                   {"expand": "stages,branches,actions,applications,labels,variableContext"})
+                   {"expand": "stages,branches,actions,applications,labels"})
     dump(data)
 
 
@@ -346,8 +381,13 @@ def cmd_branches(base, pat, args):
     dump({"branches": items, "size": total, "returned": len(items), "truncated": truncated})
 
 
-def cmd_variables(base, pat, args):
-    data = api_get(base, pat, f"/api/latest/plan/{args.plan_key}/variables")
+def variable_name_list(data):
+    """Project a variables response to names and password flags only.
+
+    Variable values are never output or written to files by this
+    helper: a plain (non-password) variable can still hold a token or
+    an internal URL, and analysis output tends to be shared.
+    """
     raw = data if isinstance(data, list) else data.get("variables", data)
     names = []
     if isinstance(raw, list):
@@ -357,7 +397,12 @@ def cmd_variables(base, pat, args):
                     "name": v.get("name") or v.get("key"),
                     "isPassword": bool(v.get("isPassword") or v.get("password")),
                 })
-    dump({"variables": names, "note": "Values are never output by this helper."})
+    return names
+
+
+def cmd_variables(base, pat, args):
+    data = api_get(base, pat, f"/api/latest/plan/{args.plan_key}/variables")
+    dump({"variables": variable_name_list(data), "note": "Values are never output by this helper."})
 
 
 def cmd_deploys(base, pat, args):
@@ -433,7 +478,7 @@ def cmd_dossier(base, pat, args):
                 json.dump(obj, f, ensure_ascii=False, indent=2)
 
     plan = api_get(base, pat, f"/api/latest/plan/{args.plan_key}",
-                   {"expand": "stages,branches,actions,labels,variableContext"})
+                   {"expand": "stages,branches,actions,labels"})
     save("plan.json", plan)
 
     specs_text, specs_note = None, ""
@@ -454,7 +499,9 @@ def cmd_dossier(base, pat, args):
         save("artifacts.json", {"error": e.message})
 
     variables = api_get(base, pat, f"/api/latest/plan/{args.plan_key}/variables")
-    save("variables-raw.json", variables)
+    # Names and password flags only — the raw response can carry
+    # variable values, which this helper never writes to files.
+    save("variables.json", {"variables": variable_name_list(variables)})
 
     deps = {}
     for side in ("parent", "child"):
@@ -618,6 +665,13 @@ def main(argv=None):
     except ConfigError as e:
         print(f"Config error: {e}", file=sys.stderr)
         return 3
+    parsed_base = urllib.parse.urlparse(base)
+    if parsed_base.scheme == "http" and parsed_base.hostname not in ("localhost", "127.0.0.1", "::1"):
+        print(
+            "Warning: BAMBOO_BASE_URL uses http://, so the PAT is sent in cleartext. "
+            "Use https:// if the server offers it.",
+            file=sys.stderr,
+        )
     try:
         args.func(base, pat, args)
     except ApiError as e:

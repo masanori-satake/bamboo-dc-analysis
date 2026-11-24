@@ -159,9 +159,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/rest/api/latest/plan/PROJ-PLAN/artifact":
             self.send_json({"artifacts": {"artifact": [{"name": "dist", "shared": True}]}})
         elif path == "/rest/api/latest/plan/PROJ-PLAN/variables":
+            # Real servers include the values; the helper must project
+            # them away everywhere (stdout and dossier files alike).
             self.send_json({"variables": [
-                {"name": "releaseChannel", "isPassword": False},
-                {"name": "dbPassword", "isPassword": True},
+                {"name": "releaseChannel", "isPassword": False, "value": "stable"},
+                {"name": "dbPassword", "isPassword": True, "value": "********"},
             ]})
         elif path.startswith("/rest/api/latest/dependency/search/"):
             self.send_json({"error": "forbidden"}, 403)
@@ -179,6 +181,87 @@ def run_helper(env, *argv):
     assert TOKEN not in proc.stdout, "TOKEN LEAKED TO STDOUT"
     assert TOKEN not in proc.stderr, "TOKEN LEAKED TO STDERR"
     return proc
+
+
+def redirect_tests():
+    """The PAT follows a redirect only on the same host.
+
+    Server A answers /info with a redirect to its own /info-real
+    (same host: the token must be kept, or the hop fails with 401),
+    which redirects on to server B on another port (a different
+    host: B must see no Authorization header at all).
+    """
+    seen = {}
+
+    class BHandler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            seen["b_authorization"] = self.headers.get("Authorization")
+            body = json.dumps({"version": "12.1.0", "buildNumber": "120100"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server_b = HTTPServer(("127.0.0.1", 0), BHandler)
+    port_b = server_b.server_address[1]
+    threading.Thread(target=server_b.serve_forever, daemon=True).start()
+
+    class AHandler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def redirect(self, location):
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            port_a = self.server.server_address[1]
+            if parsed.path == "/rest/api/latest/info":
+                self.redirect(f"http://127.0.0.1:{port_a}/rest/api/latest/info-real")
+            elif parsed.path == "/rest/api/latest/info-real":
+                if self.headers.get("Authorization") != "Bearer " + TOKEN:
+                    body = b'{"error": "unauthorized"}'
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                seen["a_real_authorization"] = self.headers.get("Authorization")
+                self.redirect(f"http://127.0.0.1:{port_b}/rest/api/latest/info")
+            elif parsed.path == "/rest/api/latest/currentUser":
+                body = json.dumps({"name": "test-user", "fullName": "Test User"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+    server_a = HTTPServer(("127.0.0.1", 0), AHandler)
+    port_a = server_a.server_address[1]
+    threading.Thread(target=server_a.serve_forever, daemon=True).start()
+
+    env = dict(os.environ)
+    env["BAMBOO_BASE_URL"] = f"http://127.0.0.1:{port_a}"
+    env["BAMBOO_PAT"] = TOKEN
+    p = run_helper(env, "check")
+    assert p.returncode == 0, p.stderr
+    assert seen.get("a_real_authorization") == "Bearer " + TOKEN, seen
+    assert seen.get("b_authorization") is None, seen
+    server_a.shutdown()
+    server_b.shutdown()
+    print("redirect credential rules OK")
 
 
 def main():
@@ -247,9 +330,15 @@ def main():
     p = run_helper(env, "dossier", "PROJ-PLAN", "--out", outdir, "--days", "90")
     assert p.returncode == 0, p.stderr
     for name in ("plan.json", "specs.yaml", "branches.json", "artifacts.json",
-                 "variables-raw.json", "dependencies.json", "deploy-for-plan.json",
+                 "variables.json", "dependencies.json", "deploy-for-plan.json",
                  "history-stats.json", "dossier.md"):
         assert os.path.exists(os.path.join(outdir, name)), name
+    assert not os.path.exists(os.path.join(outdir, "variables-raw.json"))
+    with open(os.path.join(outdir, "variables.json")) as f:
+        variables_text = f.read()
+    assert '"value"' not in variables_text and "stable" not in variables_text, variables_text
+    saved_names = {x["name"]: x["isPassword"] for x in json.loads(variables_text)["variables"]}
+    assert saved_names == {"releaseChannel": False, "dbPassword": True}, saved_names
     with open(os.path.join(outdir, "specs.yaml")) as f:
         assert f.read() == SPECS_YAML
     with open(os.path.join(outdir, "dossier.md")) as f:
@@ -259,6 +348,9 @@ def main():
     deps = json.load(open(os.path.join(outdir, "dependencies.json")))
     assert "error" in deps["parent"], deps
     print("dossier OK")
+
+    # redirects: the token stays on the same host and stops there
+    redirect_tests()
 
     # missing env -> exit 3
     env2 = dict(os.environ)
