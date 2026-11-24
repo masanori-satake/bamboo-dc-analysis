@@ -165,6 +165,16 @@ class Handler(BaseHTTPRequestHandler):
                 {"name": "releaseChannel", "isPassword": False, "value": "stable"},
                 {"name": "dbPassword", "isPassword": True, "value": "********"},
             ]})
+        elif path == "/rest/api/latest/plan/PROJ-TRUNC":
+            # Declares 100 bytes but delivers 11 and closes: the helper
+            # must reject the short body instead of parsing it.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.write(b'{"key": "x"')
+            self.wfile.flush()
+            self.close_connection = True
         elif path.startswith("/rest/api/latest/dependency/search/"):
             self.send_json({"error": "forbidden"}, 403)
         elif path == "/rest/api/latest/deploy/project/forPlan":
@@ -192,12 +202,14 @@ def redirect_tests():
     host: B must see no Authorization header at all).
     """
     seen = {}
+    b_hits = []
 
     class BHandler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
         def do_GET(self):
+            b_hits.append(self.path)
             seen["b_authorization"] = self.headers.get("Authorization")
             body = json.dumps({"version": "12.1.0", "buildNumber": "120100"}).encode()
             self.send_response(200)
@@ -259,6 +271,34 @@ def redirect_tests():
     assert p.returncode == 0, p.stderr
     assert seen.get("a_real_authorization") == "Bearer " + TOKEN, seen
     assert seen.get("b_authorization") is None, seen
+
+    # An oversized redirect body must stop the redirect entirely:
+    # server C declares a 40 MB body on its 302 to B, so the helper
+    # refuses before B is ever contacted.
+    class CHandler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{port_b}/rest/api/latest/info")
+            self.send_header("Content-Length", "40000000")
+            self.end_headers()
+            self.wfile.write(b"tiny")
+            self.wfile.flush()
+            self.close_connection = True
+
+    server_c = HTTPServer(("127.0.0.1", 0), CHandler)
+    port_c = server_c.server_address[1]
+    threading.Thread(target=server_c.serve_forever, daemon=True).start()
+    hits_before = len(b_hits)
+    env_c = dict(env)
+    env_c["BAMBOO_BASE_URL"] = f"http://127.0.0.1:{port_c}"
+    p = run_helper(env_c, "check")
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert len(b_hits) == hits_before, b_hits
+    server_c.shutdown()
+
     server_a.shutdown()
     server_b.shutdown()
     print("redirect credential rules OK")
@@ -324,9 +364,21 @@ def main():
     assert names == {"releaseChannel": False, "dbPassword": True}, names
     print("variables OK")
 
+    # truncated body: declared 100 bytes, delivered 11 -> ApiError
+    p = run_helper(env, "plan", "PROJ-TRUNC")
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "truncated" in p.stderr, p.stderr
+    print("truncation OK")
+
     # dossier (dependency endpoints return 403 and must be tolerated)
     outdir = "/tmp/bamboo-dossier-test"
     subprocess.run(["rm", "-rf", outdir])
+    # A stale variables-raw.json from an older version sits in the
+    # reused output folder; the run must remove it, not leave it next
+    # to the names-only variables.json.
+    os.makedirs(outdir)
+    with open(os.path.join(outdir, "variables-raw.json"), "w") as f:
+        f.write('{"variables": [{"name": "x", "value": "stale"}]}')
     p = run_helper(env, "dossier", "PROJ-PLAN", "--out", outdir, "--days", "90")
     assert p.returncode == 0, p.stderr
     for name in ("plan.json", "specs.yaml", "branches.json", "artifacts.json",

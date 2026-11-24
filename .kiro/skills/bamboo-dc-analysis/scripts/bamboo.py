@@ -9,6 +9,7 @@ Reads connection settings from environment variables only:
 Only HTTP GET is used. Standard library only, so it runs on a plain Python 3.9+.
 """
 import argparse
+import io
 import json
 import os
 import statistics
@@ -47,6 +48,47 @@ class _CredentialSafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         if parsed.netloc != original.netloc or (original.scheme == "https" and parsed.scheme == "http"):
             new_req.remove_header("Authorization")
         return new_req
+
+    def _drain_redirect_body(self, fp, headers):
+        """Read and discard a redirect response's body, with the cap.
+
+        The stdlib http_error_302 reads the intermediate body with no
+        limit before following the redirect, so the cap in api_get
+        never applies to 3xx responses. Returns False when the body
+        exceeds MAX_BODY_BYTES (declared up front or discovered while
+        draining); the caller then refuses to follow the redirect.
+        """
+        length = headers.get("Content-Length")
+        if length is not None:
+            try:
+                if int(length) > MAX_BODY_BYTES:
+                    return False
+            except ValueError:
+                pass
+        drained = 0
+        while drained <= MAX_BODY_BYTES:
+            chunk = fp.read(min(65536, MAX_BODY_BYTES + 1 - drained))
+            if not chunk:
+                return True
+            drained += len(chunk)
+        return False
+
+    def http_error_302(self, req, fp, code, msg, headers):
+        if not self._drain_redirect_body(fp, headers):
+            raise urllib.error.HTTPError(
+                req.full_url,
+                code,
+                "Redirect response body exceeded the size limit",
+                headers,
+                io.BytesIO(b"redirect response body exceeded the size limit"),
+            )
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    # The stdlib binds these as aliases of the base http_error_302, so
+    # each one needs the override explicitly.
+    http_error_301 = http_error_302
+    http_error_303 = http_error_302
+    http_error_307 = http_error_302
 
 
 _OPENER = urllib.request.build_opener(_CredentialSafeRedirectHandler())
@@ -99,6 +141,7 @@ def api_get(base, pat, path, params=None, accept="application/json"):
         with _OPENER.open(req, timeout=TIMEOUT) as resp:
             body = resp.read(MAX_BODY_BYTES + 1)
             ctype = resp.headers.get("Content-Type", "")
+            declared_length = resp.headers.get("Content-Length")
     except urllib.error.HTTPError as e:
         try:
             excerpt = e.read(8192).decode("utf-8", "replace")[:500]
@@ -110,6 +153,18 @@ def api_get(base, pat, path, params=None, accept="application/json"):
         raise ApiError(0, f"Connection failed for {path}: {e.reason}")
     if len(body) > MAX_BODY_BYTES:
         raise ApiError(0, f"Response for {path} exceeded the {MAX_BODY_BYTES // (1024 * 1024)} MB limit")
+    if declared_length is not None:
+        # A length-limited read returns a short body silently when the
+        # connection drops mid-response (an unbounded read() would
+        # raise IncompleteRead instead). Never treat a body shorter
+        # than the declared Content-Length as a successful response:
+        # downstream it could be saved as a complete specs.yaml.
+        try:
+            expected = int(declared_length)
+        except ValueError:
+            expected = None
+        if expected is not None and len(body) < expected:
+            raise ApiError(0, f"Response for {path} was truncated ({len(body)} of {expected} bytes)")
     if "json" in ctype:
         try:
             return json.loads(body.decode("utf-8"))
@@ -469,6 +524,12 @@ def cmd_specs_outline(base, pat, args):
 
 def cmd_dossier(base, pat, args):
     os.makedirs(args.out, exist_ok=True)
+    # Reusing an output folder from an older version: the raw variables
+    # file it wrote (values included, potentially) must not linger next
+    # to the names-only variables.json this version produces.
+    stale_raw = os.path.join(args.out, "variables-raw.json")
+    if os.path.exists(stale_raw):
+        os.remove(stale_raw)
 
     def save(name, obj):
         with open(os.path.join(args.out, name), "w", encoding="utf-8") as f:
